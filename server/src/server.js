@@ -8,6 +8,7 @@ var bodyParser = require('body-parser');
 var app = express();
 
 var StatusUpdateSchema = require('./schemas/statusupdate.json');
+var CommentSchema = require('./schemas/comment.json');
 var validate = require('express-jsonschema').validate;
 var writeDocument = database.writeDocument;
 var addDocument = database.addDocument;
@@ -156,6 +157,62 @@ app.post('/feeditem',
             res.status(401).end();
         }
     });
+
+    // Post a comment
+    app.post('/feeditem/:feeditemid/comments',
+        validate({
+            body: CommentSchema
+        }), function(req, res){
+      console.log("Posting comment");
+      var body = req.body;
+      var feedItemId = req.params.feeditemid;
+      var feedItem = database.readDocument('feedItems', feedItemId);
+      feedItem.comments.push({
+          "author": body.author,
+          "contents": body.contents,
+          "postDate": new Date().getTime(),
+          "likeCounter": []
+      });
+      writeDocument('feedItems', feedItem);
+      // Return a resolved version of the feed item.
+      res.send(getFeedItemSync(feedItemId));
+
+    });
+
+    // Like a comment
+    app.put('/feeditem/:feeditemid/comments/:commentindex/likelist/:userid', function(req, res){
+      console.log("Liking comment");
+      var commentIdx = parseInt(req.params.commentindex);
+      var feedItemId = parseInt(req.params.feeditemid);
+      var userId = parseInt(req.params.userid);
+      var feedItem = database.readDocument('feedItems', feedItemId);
+      var comment = feedItem.comments[commentIdx];
+      comment.likeCounter.push(userId);
+      writeDocument('feedItems', feedItem);
+      comment.author = database.readDocument('users', comment.author);
+      res.send(comment);
+
+    });
+
+    // Unlike a comment
+    app.delete('/feeditem/:feeditemid/comments/:commentindex/likelist/:userid', function(req, res){
+      console.log("Unliking comment");
+      var commentIdx = parseInt(req.params.commentindex);
+      var feedItemId = parseInt(req.params.feeditemid);
+      var userId = parseInt(req.params.userid);
+
+      var feedItem = database.readDocument('feedItems', feedItemId);
+      var comment = feedItem.comments[commentIdx];
+      var userIndex = comment.likeCounter.indexOf(userId);
+      if (userIndex !== -1) {
+          comment.likeCounter.splice(userIndex, 1);
+          writeDocument('feedItems', feedItem);
+      }
+      comment.author = database.readDocument('users', comment.author);
+      res.send(comment);
+
+    });
+
 
 // Reset database.
 app.post('/resetdb', function(req, res) {
